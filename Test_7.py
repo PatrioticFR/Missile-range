@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 class Missile:
     def __init__(self, masse_debut, masse_apres_booster, masse_apres_sustainer, temps_booster, temps_sustainer,
                  F_booster, F_sustainer, vitesse_initiale, angle_tir, batterie, altitude, l_n, d, l, Nozzle, a, b,
-                 angle_of_attack, Vt, h_cible):
+                 angle_of_attack, Vt, h_cible, S_wing=0.02, l_wing=0.5, wing_pos=0.7):
         self.masse_debut = masse_debut
         self.masse_apres_booster = masse_apres_booster
         self.masse_apres_sustainer = masse_apres_sustainer
@@ -25,12 +25,15 @@ class Missile:
         self.a = a  # Major axis
         self.b = b  # Minor axis
         self.angle_of_attack = angle_of_attack
-        self.alpha_optimal = 0  # Ajouter cet attribut pour stocker l'angle d'attaque optimal
         self.Vt = Vt  # Vitesse horizontale de l'ennemi
         self.h_cible = h_cible  # Altitude de l'ennemi
         self.altitudes = [self.altitude]
+        # Paramètres pour les ailes/ailerons
+        self.S_wing = S_wing  # Surface des ailes/ailerons (m²)
+        self.l_wing = l_wing  # Longueur des ailes/ailerons (m)
+        self.wing_pos = wing_pos  # Position relative des ailes sur la longueur totale (0 à 1)
 
-    def calculate_drag_coefficients(self, M, l_n, d, l, A_e, S_Ref, q):
+    def calculate_drag_coefficients(self, M, l_n, d, l, A_e, S_Ref, q, alpha):
         if M > 1:
             CD0_Body_Wave = (1.59 + 1.83 / M ** 2) * (math.atan(0.5 / (l_n / d))) ** 1.69
         else:
@@ -45,18 +48,59 @@ class Missile:
 
         CD0_Body_Friction = 0.053 * (l / d) * (M / (q * l)) ** 0.2
 
-        return CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction
+        # Contribution des ailerons/ailes à la traînée
+        alpha_deg = abs(alpha)  # Utiliser la valeur absolue pour le décrochage
+        CD_Wing_base = 0.1 * (self.S_wing / S_Ref) * (math.sin(math.radians(alpha_deg)) ** 2)
+        if M > 1:
+            CD_Wing_base += 0.05 * (self.S_wing / S_Ref)
+
+        # Modélisation du décrochage : augmentation de la traînée après l'angle critique
+        alpha_crit = 20.0  # Angle critique de décrochage (en degrés)
+        if alpha_deg > alpha_crit:
+            # Facteur d'augmentation de la traînée (linéaire jusqu'à 36°, puis plateau)
+            drag_increase_factor = 1.0 + 0.1 * min((alpha_deg - alpha_crit) / (36.0 - alpha_crit), 1.0)
+            CD_Wing = CD_Wing_base * drag_increase_factor
+        else:
+            CD_Wing = CD_Wing_base
+
+        # Traînée totale
+        if A_e > 0:
+            Ca = CD0_Body_Wave + CD0_Base_Powered + CD0_Body_Friction + CD_Wing
+        else:
+            Ca = CD0_Body_Wave + CD0_Base_Coast + CD0_Body_Friction + CD_Wing
+
+        return CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction, CD_Wing, Ca
 
     def calculate_normal_force_coefficient(self, a, b, phi, alpha, l, d):
+        # Contribution du corps
         if alpha < 0:
-            CN = -abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
-                    abs(math.sin(2 * alpha) * math.cos(alpha / 2)) + 2 * (l / d) * math.sin(alpha) ** 2)
+            CN_body = -abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
+                    abs(math.sin(2 * math.radians(alpha)) * math.cos(math.radians(alpha) / 2)) + 2 * (l / d) * math.sin(math.radians(alpha)) ** 2)
         else:
-            CN = abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
-                    abs(math.sin(2 * alpha) * math.cos(alpha / 2)) + 2 * (l / d) * math.sin(alpha) ** 2)
-        return CN
+            CN_body = abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
+                    abs(math.sin(2 * math.radians(alpha)) * math.cos(math.radians(alpha) / 2)) + 2 * (l / d) * math.sin(math.radians(alpha)) ** 2)
 
-    def calculer_portee(self, generer_graphiques=True):
+        # Contribution des ailerons/ailes
+        alpha_rad = math.radians(abs(alpha))  # Utiliser la valeur absolue pour le décrochage
+        CN_wing_base = 2 * math.pi * alpha_rad * (self.S_wing / (math.pi * (d / 2) ** 2))
+
+        # Modélisation du décrochage : perte de portance après l'angle critique
+        alpha_crit = 20.0  # Angle critique de décrochage (en degrés)
+        if abs(alpha) > alpha_crit:
+            # Réduction sigmoïde de la portance (0 à 1, avec 1 avant décrochage et 0 après 36°)
+            lift_reduction = 1.0 / (1.0 + math.exp(5.0 * (abs(alpha) - 28.0) / (36.0 - 28.0)))
+            CN_wing = CN_wing_base * lift_reduction
+        else:
+            CN_wing = CN_wing_base
+
+        CN_wing = max(-1.0, min(1.0, CN_wing))  # Limiter entre -1 et 1
+
+        # Coefficient de force normale total
+        CN_total = CN_body + CN_wing * (self.wing_pos * (l - self.l_n) / l)
+
+        return CN_total
+
+    def calculer_portee(self, generer_graphiques=True, alpha_ascendant=None, alpha_descendant=None):
         self.altitudes = [self.altitude]
 
         vitesse_horizontale = self.vitesse_initiale * math.cos(math.radians(self.angle_tir))
@@ -87,8 +131,7 @@ class Missile:
         Ts = [0]
         Ps = [0]
 
-        altitude_max = 0
-        alpha = 0
+        alpha = math.radians(alpha_ascendant) if alpha_ascendant is not None else 0  # Alpha ascendant par défaut
         en_descente = False
         launched = False
 
@@ -158,16 +201,8 @@ class Missile:
             S = math.pi * (self.d / 2) ** 2
             son = math.sqrt(gamma * R * T)
             M = V / son
-            CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction = self.calculate_drag_coefficients(M,
-                                                                                                                  l_n,
-                                                                                                                  d, l,
-                                                                                                                  A_e,
-                                                                                                                  S_Ref,
-                                                                                                                  q)
-            if t <= self.temps_booster + self.temps_sustainer:
-                Ca = CD0_Body_Wave + CD0_Base_Powered + CD0_Body_Friction
-            else:
-                Ca = CD0_Body_Wave + CD0_Base_Coast + CD0_Body_Friction
+            CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction, CD_Wing, Ca = self.calculate_drag_coefficients(
+                M, l_n, d, l, A_e, S_Ref, q, math.degrees(alpha))
 
             Fa = 0.5 * Ca * rho * S * V ** 2
 
@@ -181,10 +216,10 @@ class Missile:
 
             if not en_descente and altitude < max(altitudes):
                 en_descente = True
-                alpha = math.radians(self.alpha_optimal)
+                alpha = math.radians(alpha_descendant) if alpha_descendant is not None else alpha
 
             phi = 0
-            Cn = self.calculate_normal_force_coefficient(self.a, self.b, phi, alpha, self.l, self.d)
+            Cn = self.calculate_normal_force_coefficient(self.a, self.b, phi, math.degrees(alpha), self.l, self.d)
 
             Lift_drag_ratio = (Cn * math.cos(alpha) - Ca * math.sin(alpha)) / (
                     Cn * math.sin(alpha) + Ca * math.cos(alpha))
@@ -267,7 +302,7 @@ class Missile:
             plt.xlabel('Distance horizontale (m)')
             plt.ylabel('Altitude (m)')
             plt.title(
-                f'Trajectoire du missile (angle de tir: {self.angle_tir}°, angle d\'attaque: {self.alpha_optimal}°)')
+                f'Trajectoire du missile (angle de tir: {self.angle_tir}°, alpha_ascendant: {alpha_ascendant}°, alpha_descendant: {alpha_descendant}°)')
             plt.grid(True)
 
             plt.subplot(4, 2, 2)
@@ -374,7 +409,7 @@ class Missile:
             plt.plot(np.arange(0, len(alphas) * delta_t, delta_t), alphas)
             plt.xlabel('Temps (s)')
             plt.ylabel('Angle d\'attaque alpha (degrés)')
-            plt.title(f'Évolution de l\'angle d\'attaque alpha du missile (optimisé à {self.alpha_optimal} degrés)')
+            plt.title(f'Évolution de l\'angle d\'attaque alpha du missile (ascendant: {alpha_ascendant}°, descendant: {alpha_descendant}°)')
             plt.grid(True)
             plt.show()
 
@@ -388,60 +423,41 @@ class Missile:
 
         return portee, score, cible_atteinte
 
-    def trouver_meilleure_combinaison(self, angle_tir_min=-45, angle_tir_max=45, alpha_min=-36, alpha_max=36, pas_tir_grossier=1, pas_alpha_grossier=1, pas_tir_fin=0.1, pas_alpha_fin=0.1):
+    def trouver_meilleure_combinaison(self, angle_tir_min=-45, angle_tir_max=45, alpha_asc_min=-36, alpha_asc_max=36,
+                                     alpha_desc_min=-36, alpha_desc_max=36, pas_tir_grossier=1, pas_alpha_grossier=1,
+                                     pas_tir_fin=0.1, pas_alpha_fin=0.1):
         """
-        Teste toutes les combinaisons d'angle de tir et d'angle d'attaque en deux passes :
+        Teste toutes les combinaisons d'angle de tir, alpha ascendant et alpha descendant en deux passes :
         1. Passe grossière (pas de 1°) pour identifier les meilleures combinaisons.
         2. Passe fine (pas de 0.1°) autour des meilleures combinaisons pour affiner.
-
-        Parameters:
-        -----------
-        angle_tir_min : float
-            Angle de tir minimum à tester (en degrés).
-        angle_tir_max : float
-            Angle de tir maximum à tester (en degrés).
-        alpha_min : float
-            Angle d'attaque minimum à tester (en degrés).
-        alpha_max : float
-            Angle d'attaque maximum à tester (en degrés).
-        pas_tir_grossier : float
-            Pas pour la première passe des angles de tir (en degrés).
-        pas_alpha_grossier : float
-            Pas pour la première passe des angles d'attaque (en degrés).
-        pas_tir_fin : float
-            Pas pour la seconde passe des angles de tir (en degrés).
-        pas_alpha_fin : float
-            Pas pour la seconde passe des angles d'attaque (en degrés).
-
-        Returns:
-        --------
-        tuple
-            (angle_tir_optimal, alpha_optimal, portee_max) - L'angle de tir optimal,
-            l'angle d'attaque optimal, et la portée maximale correspondante.
         """
-        print("Première passe : Test grossier des combinaisons d'angle de tir et d'angle d'attaque...")
+        print("Première passe : Test grossier des combinaisons d'angle de tir, alpha ascendant et alpha descendant...")
 
         # Réinitialiser pour éviter toute influence de la valeur initiale
         self.angle_tir = None
 
-        # Liste pour stocker les combinaisons valides (angle_tir, alpha, portee, score)
+        # Liste pour stocker les combinaisons valides (angle_tir, alpha_asc, alpha_desc, portee, score)
         combinaisons_valides = []
+
+        # Réduire les plages pour limiter le temps de calcul (ajustez si nécessaire)
+        alpha_asc_min = -20  # Réduit pour accélérer
+        alpha_asc_max = 20
+        alpha_desc_min = -36
+        alpha_desc_max = 36
 
         # Première passe : pas grossier
         for angle_tir in np.arange(angle_tir_min, angle_tir_max + pas_tir_grossier, pas_tir_grossier):
             self.angle_tir = angle_tir
+            for alpha_asc in np.arange(alpha_asc_min, alpha_asc_max + pas_alpha_grossier, pas_alpha_grossier):
+                for alpha_desc in np.arange(alpha_desc_min, alpha_desc_max + pas_alpha_grossier, pas_alpha_grossier):
+                    self.altitudes = [self.altitude]
+                    portee, score, cible_atteinte = self.calculer_portee(generer_graphiques=False, alpha_ascendant=alpha_asc, alpha_descendant=alpha_desc)
 
-            for alpha in np.arange(alpha_min, alpha_max + pas_alpha_grossier, pas_alpha_grossier):
-                self.alpha_optimal = alpha
-                self.altitudes = [self.altitude]
-
-                portee, score, cible_atteinte = self.calculer_portee(generer_graphiques=False)
-
-                if cible_atteinte:
-                    duree_vol = len(self.altitudes) * 0.1
-                    if duree_vol <= self.batterie:
-                        combinaisons_valides.append((angle_tir, alpha, portee, score))
-                        print(f"Combinaison valide (passe 1) : angle_tir={angle_tir}°, alpha={alpha}°, portée={portee:.2f}m, score={score:.2f}")
+                    if cible_atteinte:
+                        duree_vol = len(self.altitudes) * 0.1
+                        if duree_vol <= self.batterie:
+                            combinaisons_valides.append((angle_tir, alpha_asc, alpha_desc, portee, score))
+                            print(f"Combinaison valide (passe 1) : angle_tir={angle_tir}°, alpha_asc={alpha_asc}°, alpha_desc={alpha_desc}°, portée={portee:.2f}m, score={score:.2f}")
 
         # Si aucune combinaison valide n'a été trouvée dans la première passe
         if not combinaisons_valides:
@@ -449,75 +465,75 @@ class Missile:
             print("Recherche de la trajectoire la plus proche...")
             meilleure_distance = float('inf')
             meilleur_angle_tir = 0
-            meilleur_alpha = 0
+            meilleur_alpha_asc = 0
+            meilleur_alpha_desc = 0
             meilleure_portee = 0
 
             for angle_tir in np.arange(angle_tir_min, angle_tir_max + pas_tir_grossier, pas_tir_grossier):
                 self.angle_tir = angle_tir
-                for alpha in np.arange(alpha_min, alpha_max + pas_alpha_grossier, pas_alpha_grossier):
-                    self.alpha_optimal = alpha
-                    self.altitudes = [self.altitude]
-                    self.calculer_portee(generer_graphiques=False)
+                for alpha_asc in np.arange(alpha_asc_min, alpha_asc_max + pas_alpha_grossier, pas_alpha_grossier):
+                    for alpha_desc in np.arange(alpha_desc_min, alpha_desc_max + pas_alpha_grossier, pas_alpha_grossier):
+                        self.altitudes = [self.altitude]
+                        self.calculer_portee(generer_graphiques=False, alpha_ascendant=alpha_asc, alpha_descendant=alpha_desc)
 
-                    min_distance = float('inf')
-                    for alt in self.altitudes:
-                        distance = abs(alt - self.h_cible)
-                        if distance < min_distance:
-                            min_distance = distance
+                        min_distance = float('inf')
+                        for alt in self.altitudes:
+                            distance = abs(alt - self.h_cible)
+                            if distance < min_distance:
+                                min_distance = distance
 
-                    if min_distance < meilleure_distance:
-                        meilleure_distance = min_distance
-                        meilleur_angle_tir = angle_tir
-                        meilleur_alpha = alpha
-                        meilleure_portee = portee
+                        if min_distance < meilleure_distance:
+                            meilleure_distance = min_distance
+                            meilleur_angle_tir = angle_tir
+                            meilleur_alpha_asc = alpha_asc
+                            meilleur_alpha_desc = alpha_desc
+                            meilleure_portee = portee
 
-            print(f"Meilleure approximation (passe 1) : angle_tir={meilleur_angle_tir}°, alpha={meilleur_alpha}°, distance à la cible={meilleure_distance:.2f}m")
-            return meilleur_angle_tir, meilleur_alpha, meilleure_portee
+            print(f"Meilleure approximation (passe 1) : angle_tir={meilleur_angle_tir}°, alpha_asc={meilleur_alpha_asc}°, alpha_desc={meilleur_alpha_desc}°, distance à la cible={meilleure_distance:.2f}m")
+            return meilleur_angle_tir, meilleur_alpha_asc, meilleur_alpha_desc, meilleure_portee
 
         # Trier les combinaisons valides par portée décroissante et prendre les 5 meilleures (ou moins si moins de 5)
-        combinaisons_valides.sort(key=lambda x: x[2], reverse=True)
+        combinaisons_valides.sort(key=lambda x: x[3], reverse=True)
         meilleures_combinaisons = combinaisons_valides[:min(5, len(combinaisons_valides))]
 
         print("\nSeconde passe : Affinage autour des meilleures combinaisons...")
         combinaisons_valides = []  # Réinitialiser pour la seconde passe
 
         # Seconde passe : affiner autour des meilleures combinaisons
-        for angle_tir_ref, alpha_ref, _, _ in meilleures_combinaisons:
-            print(f"Affinage autour de angle_tir={angle_tir_ref}°, alpha={alpha_ref}°...")
-            # Définir une plage autour des valeurs de référence (±2° par exemple)
+        for angle_tir_ref, alpha_asc_ref, alpha_desc_ref, _, _ in meilleures_combinaisons:
+            print(f"Affinage autour de angle_tir={angle_tir_ref}°, alpha_asc={alpha_asc_ref}°, alpha_desc={alpha_desc_ref}°...")
             angle_tir_min_fin = max(angle_tir_min, angle_tir_ref - 2)
             angle_tir_max_fin = min(angle_tir_max, angle_tir_ref + 2)
-            alpha_min_fin = max(alpha_min, alpha_ref - 2)
-            alpha_max_fin = min(alpha_max, alpha_ref + 2)
+            alpha_asc_min_fin = max(alpha_asc_min, alpha_asc_ref - 2)
+            alpha_asc_max_fin = min(alpha_asc_max, alpha_asc_ref + 2)
+            alpha_desc_min_fin = max(alpha_desc_min, alpha_desc_ref - 2)
+            alpha_desc_max_fin = min(alpha_desc_max, alpha_desc_ref + 2)
 
             for angle_tir in np.arange(angle_tir_min_fin, angle_tir_max_fin + pas_tir_fin, pas_tir_fin):
                 self.angle_tir = angle_tir
-                for alpha in np.arange(alpha_min_fin, alpha_max_fin + pas_alpha_fin, pas_alpha_fin):
-                    self.alpha_optimal = alpha
-                    self.altitudes = [self.altitude]
+                for alpha_asc in np.arange(alpha_asc_min_fin, alpha_asc_max_fin + pas_alpha_fin, pas_alpha_fin):
+                    for alpha_desc in np.arange(alpha_desc_min_fin, alpha_desc_max_fin + pas_alpha_fin, pas_alpha_fin):
+                        self.altitudes = [self.altitude]
+                        portee, score, cible_atteinte = self.calculer_portee(generer_graphiques=False, alpha_ascendant=alpha_asc, alpha_descendant=alpha_desc)
 
-                    portee, score, cible_atteinte = self.calculer_portee(generer_graphiques=False)
+                        if cible_atteinte:
+                            duree_vol = len(self.altitudes) * 0.1
+                            if duree_vol <= self.batterie:
+                                combinaisons_valides.append((angle_tir, alpha_asc, alpha_desc, portee, score))
+                                print(f"Combinaison valide (passe 2) : angle_tir={angle_tir}°, alpha_asc={alpha_asc}°, alpha_desc={alpha_desc}°, portée={portee:.2f}m, score={score:.2f}")
 
-                    if cible_atteinte:
-                        duree_vol = len(self.altitudes) * 0.1
-                        if duree_vol <= self.batterie:
-                            combinaisons_valides.append((angle_tir, alpha, portee, score))
-                            print(f"Combinaison valide (passe 2) : angle_tir={angle_tir}°, alpha={alpha}°, portée={portee:.2f}m, score={score:.2f}")
-
-        # Si aucune combinaison valide n'a été trouvée dans la seconde passe (peu probable)
         if not combinaisons_valides:
             print("Aucune combinaison n'a permis d'atteindre la cible avant la fin de la batterie (passe 2).")
             print("Retour aux meilleures combinaisons de la passe 1...")
-            meilleure_combinaison = max(meilleures_combinaisons, key=lambda x: x[2])
-            angle_tir_optimal, alpha_optimal, portee_max, _ = meilleure_combinaison
+            meilleure_combinaison = max(meilleures_combinaisons, key=lambda x: x[3])
+            angle_tir_optimal, alpha_asc_optimal, alpha_desc_optimal, portee_max, _ = meilleure_combinaison
         else:
-            # Trouver la combinaison avec la meilleure portée parmi les valides
-            meilleure_combinaison = max(combinaisons_valides, key=lambda x: x[2])
-            angle_tir_optimal, alpha_optimal, portee_max, _ = meilleure_combinaison
+            meilleure_combinaison = max(combinaisons_valides, key=lambda x: x[3])
+            angle_tir_optimal, alpha_asc_optimal, alpha_desc_optimal, portee_max, _ = meilleure_combinaison
 
-        print(f"Meilleure combinaison trouvée : angle_tir={angle_tir_optimal}°, alpha={alpha_optimal}°, portée={portee_max:.2f}m")
+        print(f"Meilleure combinaison trouvée : angle_tir={angle_tir_optimal}°, alpha_asc={alpha_asc_optimal}°, alpha_desc={alpha_desc_optimal}°, portée={portee_max:.2f}m")
 
-        return angle_tir_optimal, alpha_optimal, portee_max
+        return angle_tir_optimal, alpha_asc_optimal, alpha_desc_optimal, portee_max
 
 
 # Spécifications du missile MICA
@@ -525,16 +541,17 @@ missile = Missile(112, 88.3, 70.1,
                   2.75, 4, 20250, 10720,
                   300, None, 70, 5000,
                   0.40, 0.16, 3.1, 0.12, 0.08, 0.08, 36,
-                  300, 2000)
+                  300, 2000,
+                  S_wing=0.02, l_wing=0.5, wing_pos=0.7)
 
-
+# Test et optimisation
 print("Test avec vitesse initiale = 300 m/s")
-angle_tir_optimal, alpha_optimal, portee_max = missile.trouver_meilleure_combinaison()
+angle_tir_optimal, alpha_asc_optimal, alpha_desc_optimal, portee_max = missile.trouver_meilleure_combinaison()
 print(f"L'angle de tir optimal est de {angle_tir_optimal} degrés")
-print(f"L'angle d'attaque optimal est de {alpha_optimal} degrés")
+print(f"L'angle d'attaque ascendant optimal est de {alpha_asc_optimal} degrés")
+print(f"L'angle d'attaque descendant optimal est de {alpha_desc_optimal} degrés")
 print(f"La portée maximale est de {portee_max:.2f} mètres")
 
-# Générer les graphiques pour l'angle de tir et d'attaque optimaux
+# Générer les graphiques pour les valeurs optimales
 missile.angle_tir = angle_tir_optimal
-missile.alpha_optimal = alpha_optimal
-missile.calculer_portee(generer_graphiques=True)
+missile.calculer_portee(generer_graphiques=True, alpha_ascendant=alpha_asc_optimal, alpha_descendant=alpha_desc_optimal)

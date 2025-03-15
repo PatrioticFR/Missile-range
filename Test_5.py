@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 class Missile:
     def __init__(self, masse_debut, masse_apres_booster, masse_apres_sustainer, temps_booster, temps_sustainer,
                  F_booster, F_sustainer, vitesse_initiale, angle_tir, batterie, altitude, l_n, d, l, Nozzle, a, b,
-                 angle_of_attack, Vt, h_cible):
+                 angle_of_attack, Vt, h_cible, S_wing=0.02, l_wing=0.5, wing_pos=0.7):
         self.masse_debut = masse_debut
         self.masse_apres_booster = masse_apres_booster
         self.masse_apres_sustainer = masse_apres_sustainer
@@ -29,8 +29,12 @@ class Missile:
         self.Vt = Vt  # Vitesse horizontale de l'ennemi
         self.h_cible = h_cible  # Altitude de l'ennemi
         self.altitudes = [self.altitude]
+        # Nouveaux paramètres pour les ailes/ailerons
+        self.S_wing = S_wing  # Surface des ailes/ailerons (m²), valeur par défaut 0.02 m² (approximation)
+        self.l_wing = l_wing  # Longueur des ailes/ailerons (m), valeur par défaut 0.5 m
+        self.wing_pos = wing_pos  # Position relative des ailes sur la longueur totale (0 à 1), valeur par défaut 0.7 (proche de l'arrière)
 
-    def calculate_drag_coefficients(self, M, l_n, d, l, A_e, S_Ref, q):
+    def calculate_drag_coefficients(self, M, l_n, d, l, A_e, S_Ref, q, alpha):
         if M > 1:
             CD0_Body_Wave = (1.59 + 1.83 / M ** 2) * (math.atan(0.5 / (l_n / d))) ** 1.69
         else:
@@ -45,16 +49,38 @@ class Missile:
 
         CD0_Body_Friction = 0.053 * (l / d) * (M / (q * l)) ** 0.2
 
-        return CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction
+        # Contribution des ailerons/ailes à la traînée
+        # Approximation : traînée induite par les ailes proportionnelle à l'angle d'attaque et à la surface
+        CD_Wing = 0.1 * (self.S_wing / S_Ref) * (abs(math.sin(math.radians(alpha))) ** 2)  # Traînée induite simplifiée
+        if M > 1:
+            CD_Wing += 0.05 * (self.S_wing / S_Ref)  # Ajout de traînée de vague pour vitesses supersoniques
+
+        # Traînée totale
+        if A_e > 0:  # Si moteur actif
+            Ca = CD0_Body_Wave + CD0_Base_Powered + CD0_Body_Friction + CD_Wing
+        else:
+            Ca = CD0_Body_Wave + CD0_Base_Coast + CD0_Body_Friction + CD_Wing
+
+        return CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction, CD_Wing, Ca
 
     def calculate_normal_force_coefficient(self, a, b, phi, alpha, l, d):
+        # Contribution du corps
         if alpha < 0:
-            CN = -abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
+            CN_body = -abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
                     abs(math.sin(2 * alpha) * math.cos(alpha / 2)) + 2 * (l / d) * math.sin(alpha) ** 2)
         else:
-            CN = abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
+            CN_body = abs((a / b) * math.cos(phi) + (b / a) * math.sin(phi)) * (
                     abs(math.sin(2 * alpha) * math.cos(alpha / 2)) + 2 * (l / d) * math.sin(alpha) ** 2)
-        return CN
+
+        # Contribution des ailerons/ailes
+        # Approximation : coefficient de portance des ailes basé sur l'angle d'attaque et la surface
+        CN_wing = 2 * math.pi * math.radians(alpha) * (self.S_wing / (math.pi * (d / 2) ** 2))  # Modèle linéaire simplifié
+        CN_wing = max(-1.0, min(1.0, CN_wing))  # Limiter CN_wing entre -1 et 1 pour éviter des valeurs aberrantes
+
+        # Coefficient de force normale total
+        CN_total = CN_body + CN_wing * (self.wing_pos * (l - self.l_n) / l)  # Pondération par la position des ailes
+
+        return CN_total
 
     def calculer_portee(self, generer_graphiques=True):
         self.altitudes = [self.altitude]
@@ -158,16 +184,15 @@ class Missile:
             S = math.pi * (self.d / 2) ** 2
             son = math.sqrt(gamma * R * T)
             M = V / son
-            CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction = self.calculate_drag_coefficients(M,
-                                                                                                                  l_n,
-                                                                                                                  d, l,
-                                                                                                                  A_e,
-                                                                                                                  S_Ref,
-                                                                                                                  q)
-            if t <= self.temps_booster + self.temps_sustainer:
-                Ca = CD0_Body_Wave + CD0_Base_Powered + CD0_Body_Friction
-            else:
-                Ca = CD0_Body_Wave + CD0_Base_Coast + CD0_Body_Friction
+            # Ajouter alpha dans l'appel et récupérer toutes les valeurs retournées
+            CD0_Body_Wave, CD0_Base_Coast, CD0_Base_Powered, CD0_Body_Friction, CD_Wing, Ca = self.calculate_drag_coefficients(
+                M, l_n, d, l, A_e, S_Ref, q, math.degrees(alpha))
+
+            # On n'utilise plus cette partie car Ca est maintenant calculé directement dans calculate_drag_coefficients
+            # if t <= self.temps_booster + self.temps_sustainer:
+            #     Ca = CD0_Body_Wave + CD0_Base_Powered + CD0_Body_Friction
+            # else:
+            #     Ca = CD0_Body_Wave + CD0_Base_Coast + CD0_Body_Friction
 
             Fa = 0.5 * Ca * rho * S * V ** 2
 
