@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import time
 import matplotlib.pyplot as plt
 
 
@@ -431,6 +432,9 @@ class Missile:
         1. Passe grossière (pas de 1°) pour identifier les meilleures combinaisons.
         2. Passe fine (pas de 0.1°) autour des meilleures combinaisons pour affiner.
         """
+        # Démarrer le timer
+        start_time = time.time()
+
         print("Première passe : Test grossier des combinaisons d'angle de tir, alpha ascendant et alpha descendant...")
 
         # Réinitialiser pour éviter toute influence de la valeur initiale
@@ -533,6 +537,11 @@ class Missile:
 
         print(f"Meilleure combinaison trouvée : angle_tir={angle_tir_optimal}°, alpha_asc={alpha_asc_optimal}°, alpha_desc={alpha_desc_optimal}°, portée={portee_max:.2f}m")
 
+        # Fin du timer
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"\nDurée de la simulation : {elapsed_time:.2f} secondes")
+
         return angle_tir_optimal, alpha_asc_optimal, alpha_desc_optimal, portee_max
 
 
@@ -551,6 +560,8 @@ print(f"L'angle de tir optimal est de {angle_tir_optimal} degrés")
 print(f"L'angle d'attaque ascendant optimal est de {alpha_asc_optimal} degrés")
 print(f"L'angle d'attaque descendant optimal est de {alpha_desc_optimal} degrés")
 print(f"La portée maximale est de {portee_max:.2f} mètres")
+
+
 
 # Générer les graphiques pour les valeurs optimales
 missile.angle_tir = angle_tir_optimal
