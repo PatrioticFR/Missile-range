@@ -1,1 +1,26 @@
 Difference between the codes
+
+Reprise_code is a 2023 code which is not working (the aoa calcultion is wrong)
+Test_1 is a working version of this code, very fast but not the most accurate
+Test_2 is not working, bad implementation of the aoa calculation
+Test_3 is not working, tries to do both a 1ms shoot (fireed from the gound) and a 300ms shot (shoot from a plane), the result does not work
+Test_4 is slower with 2 passes but more accurate (also optimise the angle of launch) , only aoa applied after the apogee (works)
+Test_5 is the same as test_4 but takes the wing lift and drag intoo acount (before only the body was taken into account)
+Test_6 is also trying to opmise the aoa on the ascending phase, it's a lot slower (around 30min on i7 13700HX) but more accurate
+Test_7 introduces a stall model (aoa >20°) that does not exist in the previous code
+Test_7V2 correct an issue with the back to back change for the aoa in degrees and radians
+Test_8 is a new more interactive version with better readability, more optimisation and the ability to test multiple multiple missile (the fast option is kinda shit and the code was simplified) (It was made later than the code_opti)
+
+Reprise_2025 trying to compine Test7V2 with Test_8 to have both an accurate result while being more user friendly and quicker (doesn't work well at all)
+Reprise_Sonnet4.5 (same as the one aboove, just using sonnet 4.5 instead of gemini pro 2.5)
+
+Both code don't work at all (probable issue on Test_8 since they're based on it)
+
+
+
+Code_opti1 : modification of Test_7 for a quicker convergence: uses a ThreadPoolExecutor to parallelize evaluation, explicitly constructs all combinations via list comprehension, still very long #Better if more parameter (more than 3), for now take the same amount of time as other code
+Code_opti2 : #Use all of the CPU cores, a lot faster (7.5 times faster) but the CPU is overheating (like a lot) # at 100% even with extra cooling it's at 95°C
+Code_opti3 : Optimized missile trajectory simulator; Faster than previous codes ;Warning: parametric study requires 100 GB+ of RAM. Do not attempt otherwise (crash). (not the most accurate)
+Code_opti4 : Caution: parametric study faster but less accurate
+Code_opti5 : Multiple missile added
+Code_opti6 : adds a few constants and minor corrections: Improved management of atmospheric layers (identical but cleaned up). Same missile database, but more compact code. The entire code is more consistent and better prepared for expansion (e.g., supersonic models, turbulence effects, etc.).
