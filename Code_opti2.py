@@ -8,6 +8,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple, Optional
 
+#Use all of the CPU cores, a lot faster (7.5 times faster) but the CPU is overheating (like a lot)
+# at 100% even with extra cooling it's at 95°C
+
+
 def _eval_comb_wrapper(args):
     obj, angle_tir, alpha_asc, alpha_desc = args
     return obj.evaluer_combinaison(angle_tir, alpha_asc, alpha_desc)

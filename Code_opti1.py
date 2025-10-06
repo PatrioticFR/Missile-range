@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple, Optional
 
+#Better if more parameter (more than 3), for now take the same amount of time as other code
 
 
 class Missile:
