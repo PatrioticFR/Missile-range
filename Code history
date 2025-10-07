@@ -8,13 +8,19 @@ Test_4 is slower with 2 passes but more accurate (also optimise the angle of lau
 Test_5 is the same as test_4 but takes the wing lift and drag intoo acount (before only the body was taken into account)
 Test_6 is also trying to opmise the aoa on the ascending phase, it's a lot slower (around 30min on i7 13700HX) but more accurate
 Test_7 introduces a stall model (aoa >20°) that does not exist in the previous code
-Test_7V2 correct an issue with the back to back change for the aoa in degrees and radians
+Test_7V2 correct an issue with the back to back change for the aoa in degrees and radians (also improved for the atmo calcultation)
 Test_8 is a new more interactive version with better readability, more optimisation and the ability to test multiple multiple missile (the fast option is kinda shit and the code was simplified) (It was made later than the code_opti)
 
+Both code don't work at all (probable issue on Test_8 since they're based on it)
 Reprise_2025 trying to compine Test7V2 with Test_8 to have both an accurate result while being more user friendly and quicker (doesn't work well at all)
 Reprise_Sonnet4.5 (same as the one aboove, just using sonnet 4.5 instead of gemini pro 2.5)
 
-Both code don't work at all (probable issue on Test_8 since they're based on it)
+Next ones are based on Test_7v2
+Reprise_2025_v1 is just trying to degroup and make some small fonction (not working optimaly and with a few issues)
+Reprise_2025_v2 is using the             Fn = 0.5 * Cn * rho * (math.pi * (self.config.d / 2) ** 2) * V ** 2 instead of the old one : multiple issues (missile goes to space)
+
+
+
 
 
 
@@ -24,3 +30,28 @@ Code_opti3 : Optimized missile trajectory simulator; Faster than previous codes 
 Code_opti4 : Caution: parametric study faster but less accurate
 Code_opti5 : Multiple missile added
 Code_opti6 : adds a few constants and minor corrections: Improved management of atmospheric layers (identical but cleaned up). Same missile database, but more compact code. The entire code is more consistent and better prepared for expansion (e.g., supersonic models, turbulence effects, etc.).
+
+
+What to do next:
+Rework based on Test7v2 for an accurate and working version
+-Find which is most accurate between (new one):
+            Fn = 0.5 * Cn * rho * (math.pi * (self.config.d / 2) ** 2) * V ** 2
+
+and (old one)
+
+            Lift_drag_ratio = (Cn * math.cos(alpha) - Ca * math.sin(alpha)) / (
+                   Cn * math.sin(alpha) + Ca * math.cos(alpha))
+            
+            Fn = Lift_drag_ratio * Fa
+
+(The new one is the basic one while the old one was based on a presentation. The old one is more realise : range of 60km for a MICA compared to 130km+ for the new one on the Test7v2)
+
+-Optimize the code to have less of a "big block" and more smaller fonction (like def altitude )
+
+-Made a "quick interface" to choose between an EULER (with like 3 millions iteration) and an RK4 combinaision finder 
+
+-Add multiple other missile configuration (ez)
+
+-Compare with Code_opti6 and see if improvement has to be made
+
+-If optimised well enough , see if it's possible to change the "alpha_asc" and "alpha_desc" by a changing alpha every sec -> try to do very optimised method (not Euler) to not test EVERY single config (like also maybe state that the aoa
