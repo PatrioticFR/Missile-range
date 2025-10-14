@@ -248,13 +248,12 @@ class Missile:
             # APPEL CORRIGÉ : On passe 'alpha' qui est déjà en radians
             Cn = self.calculate_normal_force_coefficient(self.a, self.b, phi, alpha, self.l, self.d)
 
-            #Ancienne méthode
-            #Lift_drag_ratio = (Cn * math.cos(alpha) - Ca * math.sin(alpha)) / (
-            #        Cn * math.sin(alpha) + Ca * math.cos(alpha))
-            #
-            #Fn = Lift_drag_ratio * Fa
 
-            Fn = 0.5 * Cn * rho * S * V ** 2
+            Lift_drag_ratio = (Cn * math.cos(alpha) - Ca * math.sin(alpha)) / (
+                    Cn * math.sin(alpha) + Ca * math.cos(alpha))
+
+            Fn = Lift_drag_ratio * Fa
+
 
             Fn_horizontal = Fn * math.sin(alpha)
             Fn_vertical = Fn * math.cos(alpha)
