@@ -202,6 +202,22 @@ class Missile:
             elif altitude <= 79000:
                 T = 252.65 - 0.002 * (altitude - 61000)
                 P = 3.95642 * (T / 214.65) ** -12.2011
+            elif altitude <= 90000:
+                # Mésopause : température constante à 186.65 K
+                T = 186.65
+                P = 0.1835 * math.exp(-0.0001424 * (altitude - 79000))
+            elif altitude <= 100000:
+                # Thermosphère inférieure : gradient positif de +0.004 K/m
+                T = 186.65 + 0.004 * (altitude - 90000)
+                P = 0.0313 * math.exp(-0.0001263 * (altitude - 90000))
+            elif altitude <= 120000:
+                # Thermosphère : gradient positif de +0.01 K/m
+                T = 226.65 + 0.01 * (altitude - 100000)
+                P = 0.00889 * math.exp(-0.00009 * (altitude - 100000))
+            else:
+                # Au-delà de 120 km, conditions extrêmes
+                T = 426.65
+                P = 0.00089 * math.exp(-0.00005 * (altitude - 120000))
 
             rho = P / (R * T)
             V = (vitesse_horizontale ** 2 + vitesse_verticale ** 2) ** 0.5
@@ -232,10 +248,13 @@ class Missile:
             # APPEL CORRIGÉ : On passe 'alpha' qui est déjà en radians
             Cn = self.calculate_normal_force_coefficient(self.a, self.b, phi, alpha, self.l, self.d)
 
-            Lift_drag_ratio = (Cn * math.cos(alpha) - Ca * math.sin(alpha)) / (
-                    Cn * math.sin(alpha) + Ca * math.cos(alpha))
+            #Ancienne méthode
+            #Lift_drag_ratio = (Cn * math.cos(alpha) - Ca * math.sin(alpha)) / (
+            #        Cn * math.sin(alpha) + Ca * math.cos(alpha))
+            #
+            #Fn = Lift_drag_ratio * Fa
 
-            Fn = Lift_drag_ratio * Fa
+            Fn = 0.5 * Cn * rho * S * V ** 2
 
             Fn_horizontal = Fn * math.sin(alpha)
             Fn_vertical = Fn * math.cos(alpha)
