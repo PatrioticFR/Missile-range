@@ -593,6 +593,8 @@ missile = Missile(112, 88.3, 70.1,
                   300, 2000,
                   S_wing=0.02, l_wing=0.5, wing_pos=0.7)
 
+#Data pris de WT et "estimé" par IA : Pas fiable
+
 # Test et optimisation
 print("Test avec vitesse initiale = 300 m/s")
 angle_tir_optimal, alpha_asc_optimal, alpha_desc_optimal, portee_max = missile.trouver_meilleure_combinaison()
@@ -604,3 +606,4 @@ print(f"La portée maximale est de {portee_max:.2f} mètres")
 # Générer les graphiques pour les valeurs optimales
 missile.angle_tir = angle_tir_optimal
 missile.calculer_portee(generer_graphiques=True, alpha_ascendant=alpha_asc_optimal, alpha_descendant=alpha_desc_optimal)
+
